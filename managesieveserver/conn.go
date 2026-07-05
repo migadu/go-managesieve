@@ -198,10 +198,16 @@ func (c *Conn) serve() {
 					c.writer.Flush()
 					opts.Logger.Info("ManageSieve: absolute session timeout",
 						"duration", time.Since(c.startTime))
+					if h := opts.OnTimeout; h != nil {
+						h(TimeoutAbsolute)
+					}
 				} else {
 					c.writeLine(`BYE (TRYLATER) "Connection timed out due to inactivity, please reconnect"`)
 					c.writer.Flush()
 					opts.Logger.Info("ManageSieve: connection timed out")
+					if h := opts.OnTimeout; h != nil {
+						h(TimeoutIdle)
+					}
 				}
 			} else if errors.Is(err, errLineTooLong) {
 				// Courtesy response before dropping: after an oversized line
@@ -344,11 +350,19 @@ func (c *Conn) shutdownBye() {
 	opts := c.server.opts
 	if opts.AbsoluteSessionTimeout > 0 && time.Since(c.startTime) >= opts.AbsoluteSessionTimeout {
 		c.writeLine(`BYE (TRYLATER) "Maximum session duration exceeded, please reconnect"`)
+		c.writer.Flush()
 		opts.Logger.Info("ManageSieve: absolute session timeout",
 			"duration", time.Since(c.startTime))
-	} else {
-		c.writeLine(`BYE (TRYLATER) "Server shutting down, please reconnect"`)
+		// The absolute timer can resolve through either the capped read
+		// deadline or the connection context (handleConn derives it from
+		// AbsoluteSessionTimeout); the two paths are mutually exclusive, so
+		// the hook still fires exactly once per connection.
+		if h := opts.OnTimeout; h != nil {
+			h(TimeoutAbsolute)
+		}
+		return
 	}
+	c.writeLine(`BYE (TRYLATER) "Server shutting down, please reconnect"`)
 	c.writer.Flush()
 }
 
