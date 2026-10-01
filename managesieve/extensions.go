@@ -24,17 +24,20 @@ var SupportedExtensions = []string{
 	"comparator-i;unicode-casemap", // RFC 4790 - Unicode case-insensitive
 
 	// Common extensions
-	"imap4flags", // RFC 5232 - IMAP flag manipulation
-	"variables",  // RFC 5229 - Variable support
-	"relational", // RFC 5231 - Relational tests (gt, lt, etc.)
-	"vacation",   // RFC 5230 - Vacation auto-responder
-	"copy",       // RFC 3894 - Copy extension for redirect and fileinto
-	"regex",      // draft-murchison-sieve-regex - Regular expression match type
-	"date",       // RFC 5260 - Date and index extensions - date test
-	"index",      // RFC 5260 - Date and index extensions - header indexing
-	"mailbox",    // RFC 5490 - Mailbox existence test
-	"subaddress", // RFC 5233 - Subaddress extension (user+detail@domain)
-	"body",       // RFC 5173 - Body extension
+	"imap4flags",   // RFC 5232 - IMAP flag manipulation
+	"variables",    // RFC 5229 - Variable support
+	"relational",   // RFC 5231 - Relational tests (gt, lt, etc.)
+	"vacation",     // RFC 5230 - Vacation auto-responder
+	"copy",         // RFC 3894 - Copy extension for redirect and fileinto
+	"regex",        // draft-murchison-sieve-regex - Regular expression match type
+	"date",         // RFC 5260 - Date and index extensions - date test
+	"index",        // RFC 5260 - Date and index extensions - header indexing
+	"mailbox",      // RFC 5490 - Mailbox existence test
+	"subaddress",   // RFC 5233 - Subaddress extension (user+detail@domain)
+	"body",         // RFC 5173 - Body extension
+	"mime",         // RFC 5703 - MIME part tests (:mime, :anychild on header/address/exists)
+	"foreverypart", // RFC 5703 - Iteration over MIME parts (foreverypart, break)
+	"extracttext",  // RFC 5703 - Extract a MIME part's text into a variable
 
 	// Security-sensitive extensions (available but not enabled by default)
 	"editheader", // RFC 5293 - Editheader extension - add/delete headers
@@ -66,6 +69,9 @@ var DefaultEnabledExtensions = []string{
 	"mailbox",
 	"subaddress",
 	"body",
+	"mime",
+	"foreverypart",
+	"extracttext",
 }
 
 // FilterExtensions checks the provided extensions against SupportedExtensions.
