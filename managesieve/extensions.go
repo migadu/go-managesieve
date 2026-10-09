@@ -38,6 +38,8 @@ var SupportedExtensions = []string{
 	"mime",         // RFC 5703 - MIME part tests (:mime, :anychild on header/address/exists)
 	"foreverypart", // RFC 5703 - Iteration over MIME parts (foreverypart, break)
 	"extracttext",  // RFC 5703 - Extract a MIME part's text into a variable
+	"reject",       // RFC 5429 - Refuse delivery (the host decides how)
+	"ereject",      // RFC 5429 - Refuse delivery at protocol level where possible
 
 	// Security-sensitive extensions (available but not enabled by default)
 	"editheader", // RFC 5293 - Editheader extension - add/delete headers
@@ -72,6 +74,8 @@ var DefaultEnabledExtensions = []string{
 	"mime",
 	"foreverypart",
 	"extracttext",
+	"reject",
+	"ereject",
 }
 
 // FilterExtensions checks the provided extensions against SupportedExtensions.
