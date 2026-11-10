@@ -112,15 +112,23 @@ func TestReadBoundedLine(t *testing.T) {
 		t.Errorf("readBoundedLine = %q, %v", line, err)
 	}
 
-	// Oversized line is rejected and drained so the next line is readable.
+	// Oversized line within a single buffer chunk is rejected.
 	long := strings.Repeat("x", 200) + "\r\nnext\r\n"
 	r = bufio.NewReader(strings.NewReader(long))
 	_, err = readBoundedLine(r, 50)
 	if !errors.Is(err, errLineTooLong) {
 		t.Errorf("expected errLineTooLong, got %v", err)
 	}
-	line, err = readBoundedLine(r, 50)
-	if err != nil || strings.TrimSpace(line) != "next" {
-		t.Errorf("after oversize: readBoundedLine = %q, %v (drain failed)", line, err)
+
+	// Oversized line spanning multiple bufio buffer fills stops reading immediately
+	// once maxBytes is exceeded instead of draining an unbounded stream without '\n'.
+	stream := strings.NewReader(strings.Repeat("x", 10000))
+	smallReader := bufio.NewReaderSize(stream, 16)
+	_, err = readBoundedLine(smallReader, 50)
+	if !errors.Is(err, errLineTooLong) {
+		t.Errorf("expected errLineTooLong on multi-chunk oversized line, got %v", err)
+	}
+	if consumed := 10000 - stream.Len(); consumed > 128 {
+		t.Errorf("readBoundedLine consumed %d bytes from unbounded stream, want <= 128", consumed)
 	}
 }

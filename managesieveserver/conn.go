@@ -395,9 +395,17 @@ func (c *Conn) nextReadDeadline() time.Time {
 func (c *Conn) dispatch(ctx context.Context, cmd string, args []string) bool {
 	switch cmd {
 	case "CAPABILITY":
+		if len(args) > 0 {
+			c.clientError("Syntax: CAPABILITY")
+			return false
+		}
 		c.sendCapabilityBlock()
 		c.writeLine("OK")
 	case "STARTTLS":
+		if len(args) > 0 {
+			c.clientError("Syntax: STARTTLS")
+			return false
+		}
 		return c.handleStartTLS(ctx)
 	case "AUTHENTICATE":
 		c.handleAuthenticate(ctx, args)
@@ -410,13 +418,21 @@ func (c *Conn) dispatch(ctx context.Context, cmd string, args []string) bool {
 	case "NOOP":
 		// NOOP takes an optional tag argument (e.g. NOOP "STARTTLS-RESYNC-CAPA");
 		// sieve-connect uses this to verify capabilities were received.
-		if len(args) > 0 {
+		if len(args) > 1 {
+			c.clientError("Syntax: NOOP [tag]")
+			return false
+		}
+		if len(args) == 1 {
 			tag := unquoteString(args[0])
 			c.writeLine(fmt.Sprintf("OK (TAG %s) \"Done\"", managesieve.Quote(managesieve.SanitizeText(tag))))
 		} else {
 			c.writeLine("OK")
 		}
 	case "LOGOUT":
+		if len(args) > 0 {
+			c.clientError("Syntax: LOGOUT")
+			return false
+		}
 		c.writeLine(`OK "Goodbye"`)
 		return true
 	case "LISTSCRIPTS", "GETSCRIPT", "PUTSCRIPT", "CHECKSCRIPT", "HAVESPACE",
@@ -427,7 +443,7 @@ func (c *Conn) dispatch(ctx context.Context, cmd string, args []string) bool {
 		}
 		switch cmd {
 		case "LISTSCRIPTS":
-			c.handleListScripts(ctx)
+			c.handleListScripts(ctx, args)
 		case "GETSCRIPT":
 			c.handleGetScript(ctx, args)
 		case "PUTSCRIPT":
@@ -531,7 +547,7 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 		c.clientError("Already authenticated")
 		return
 	}
-	if len(args) < 1 {
+	if len(args) < 1 || len(args) > 2 {
 		c.clientError("Syntax: AUTHENTICATE mechanism")
 		return
 	}
@@ -597,15 +613,9 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 		}
 		authData = strings.TrimSpace(authLine)
 
-		// Client abort (RFC 5804 §2.1).
-		if authData == "*" {
-			c.lastErr = &Error{Message: "Authentication cancelled"}
-			c.no(`"Authentication cancelled"`)
-			return
-		}
-
 		// RFC 5804 §2.1: the continuation response is a string, so it may
-		// arrive literal-framed rather than as a quoted/bare base64 line.
+		// arrive literal-framed or quoted (including the "*" abort token)
+		// rather than only as a bare line.
 		if length, _, isLit, litErr := literalLength(authData); isLit {
 			if litErr != nil || length > c.server.opts.MaxAuthLiteral {
 				c.clientError("Invalid literal size")
@@ -620,6 +630,13 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 			}
 		} else {
 			authData = unquoteString(authData)
+		}
+
+		// Client abort (RFC 5804 §2.1).
+		if authData == "*" {
+			c.lastErr = &Error{Message: "Authentication cancelled"}
+			c.no(`"Authentication cancelled"`)
+			return
 		}
 	}
 
@@ -699,7 +716,7 @@ func (c *Conn) handleLogin(ctx context.Context, login SessionLogin, args []strin
 		return
 	}
 
-	if len(args) < 2 {
+	if len(args) != 2 {
 		c.clientError("Syntax: LOGIN address password")
 		return
 	}
@@ -798,7 +815,11 @@ func (c *Conn) handleStartTLS(ctx context.Context) bool {
 
 // --- Script commands (AUTHENTICATED state) ---
 
-func (c *Conn) handleListScripts(ctx context.Context) {
+func (c *Conn) handleListScripts(ctx context.Context, args []string) {
+	if len(args) > 0 {
+		c.clientError("Syntax: LISTSCRIPTS")
+		return
+	}
 	scripts, err := c.session.ListScripts(ctx)
 	if err != nil {
 		c.sessionError(err)
@@ -815,11 +836,11 @@ func (c *Conn) handleListScripts(ctx context.Context) {
 }
 
 func (c *Conn) handleGetScript(ctx context.Context, args []string) {
-	if len(args) < 1 {
+	if len(args) != 1 {
 		c.clientError("Syntax: GETSCRIPT scriptName")
 		return
 	}
-	name := strings.TrimSpace(unquoteString(args[0]))
+	name := unquoteString(args[0])
 
 	script, err := c.session.GetScript(ctx, name)
 	if err != nil {
@@ -836,7 +857,7 @@ func (c *Conn) handleGetScript(ctx context.Context, args []string) {
 }
 
 func (c *Conn) handlePutScript(ctx context.Context, args []string) {
-	if len(args) < 2 {
+	if len(args) != 2 {
 		c.clientError("Syntax: PUTSCRIPT scriptName scriptContent")
 		return
 	}
@@ -849,7 +870,7 @@ func (c *Conn) handlePutScript(ctx context.Context, args []string) {
 	// Validate script name - non-empty, valid UTF-8, no control characters.
 	// An invalid name is a client protocol fault: route it through the
 	// clientError choke point so it feeds MaxErrors/ErrorDelay.
-	name := strings.TrimSpace(unquoteString(args[0]))
+	name := unquoteString(args[0])
 	if err := managesieve.ValidateScriptName(name); err != nil {
 		c.lastErr = err
 		c.clientError(err.Error())
@@ -889,7 +910,7 @@ func (c *Conn) handlePutScript(ctx context.Context, args []string) {
 }
 
 func (c *Conn) handleCheckScript(ctx context.Context, args []string) {
-	if len(args) < 1 {
+	if len(args) != 1 {
 		c.clientError("Syntax: CHECKSCRIPT scriptContent")
 		return
 	}
@@ -919,11 +940,11 @@ func (c *Conn) handleCheckScript(ctx context.Context, args []string) {
 }
 
 func (c *Conn) handleHaveSpace(ctx context.Context, args []string) {
-	if len(args) < 2 {
+	if len(args) != 2 {
 		c.clientError("Syntax: HAVESPACE scriptName scriptSize")
 		return
 	}
-	name := strings.TrimSpace(unquoteString(args[0]))
+	name := unquoteString(args[0])
 	size, err := parseInt64(args[1])
 	if err != nil {
 		c.clientError("Invalid script size")
@@ -942,12 +963,12 @@ func (c *Conn) handleHaveSpace(ctx context.Context, args []string) {
 }
 
 func (c *Conn) handleRenameScript(ctx context.Context, args []string) {
-	if len(args) < 2 {
+	if len(args) != 2 {
 		c.clientError("Syntax: RENAMESCRIPT oldName newName")
 		return
 	}
-	oldName := strings.TrimSpace(unquoteString(args[0]))
-	newName := strings.TrimSpace(unquoteString(args[1]))
+	oldName := unquoteString(args[0])
+	newName := unquoteString(args[1])
 
 	if oldName == "" {
 		c.clientError("Script name cannot be empty")
@@ -968,12 +989,12 @@ func (c *Conn) handleRenameScript(ctx context.Context, args []string) {
 }
 
 func (c *Conn) handleSetActive(ctx context.Context, args []string) {
-	if len(args) < 1 {
+	if len(args) != 1 {
 		c.clientError("Syntax: SETACTIVE scriptName")
 		return
 	}
 	// RFC 5804 §2.8: SETACTIVE "" deactivates all scripts.
-	name := strings.TrimSpace(unquoteString(args[0]))
+	name := unquoteString(args[0])
 
 	if err := c.session.SetActive(ctx, name); err != nil {
 		c.sessionError(err)
@@ -983,11 +1004,11 @@ func (c *Conn) handleSetActive(ctx context.Context, args []string) {
 }
 
 func (c *Conn) handleDeleteScript(ctx context.Context, args []string) {
-	if len(args) < 1 {
+	if len(args) != 1 {
 		c.clientError("Syntax: DELETESCRIPT scriptName")
 		return
 	}
-	name := strings.TrimSpace(unquoteString(args[0]))
+	name := unquoteString(args[0])
 
 	if err := c.session.DeleteScript(ctx, name); err != nil {
 		c.sessionError(err)

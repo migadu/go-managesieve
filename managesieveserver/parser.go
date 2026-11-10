@@ -130,9 +130,8 @@ func unquoteString(str string) string {
 }
 
 // readBoundedLine reads a line from the reader up to maxBytes. Returns
-// errLineTooLong if the line (including \n) exceeds maxBytes; the oversized
-// line is drained so the error can be reported before the connection is torn
-// down. The returned line includes the trailing \n if present.
+// errLineTooLong if the line (including \n) exceeds maxBytes. The returned
+// line includes the trailing \n if present.
 func readBoundedLine(reader *bufio.Reader, maxBytes int) (string, error) {
 	var line []byte
 	for {
@@ -141,23 +140,6 @@ func readBoundedLine(reader *bufio.Reader, maxBytes int) (string, error) {
 
 		// Check if we've exceeded the limit
 		if len(line) > maxBytes {
-			if err == nil {
-				// Found \n and already exceeded limit
-				return "", errLineTooLong
-			}
-			if err == bufio.ErrBufferFull {
-				// Keep draining until we find \n or EOF
-				for {
-					_, drainErr := reader.ReadSlice('\n')
-					if drainErr == nil {
-						return "", errLineTooLong
-					}
-					if drainErr != bufio.ErrBufferFull {
-						return "", errLineTooLong
-					}
-				}
-			}
-			// EOF or other error while over limit - line is too long
 			return "", errLineTooLong
 		}
 
