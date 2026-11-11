@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"log/slog"
+	"net"
 	"time"
 
 	"github.com/migadu/go-managesieve/managesieve"
@@ -52,6 +53,24 @@ type Options struct {
 	// via Conn.SetTLS in NewSession (or hand a *tls.Conn to ServeConn, which
 	// the library detects itself).
 	TLSConfig *tls.Config
+
+	// OnStartTLS, if set, is called synchronously on the connection's command
+	// goroutine after STARTTLS passes every rejection check, immediately before
+	// the positive reply is written. conn is the plaintext connection being
+	// upgraded. The hook may synchronize with asynchronous plaintext writers:
+	// the reply and handshake cannot start until it returns. It must not wait
+	// for client input or handshake completion. A rejected STARTTLS command or
+	// an implicit-TLS connection does not call this hook.
+	OnStartTLS func(conn net.Conn)
+
+	// OnTLSHandshakeComplete, if set, is called synchronously on the same
+	// command goroutine after a successful STARTTLS handshake and after
+	// Conn.NetConn and Conn.IsTLS expose the upgraded connection, before the
+	// post-TLS greeting or any subsequent command is dispatched. plain is the
+	// connection passed to OnStartTLS; secure wraps plain. The hook must return
+	// promptly and must not read from the connection. It is not called after a
+	// failed handshake or for implicit TLS. Either hook may be nil independently.
+	OnTLSHandshakeComplete func(plain net.Conn, secure *tls.Conn)
 
 	// Implementation is the value of the IMPLEMENTATION capability.
 	// Default: "Go ManageSieve server".
