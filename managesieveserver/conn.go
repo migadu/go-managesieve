@@ -760,12 +760,16 @@ func (c *Conn) handleStartTLS(ctx context.Context) bool {
 		return true
 	}
 
+	plain := c.netConn
+	if opts.OnStartTLS != nil {
+		opts.OnStartTLS(plain)
+	}
 	c.writeLine(`OK "Begin TLS negotiation"`)
 	if err := c.writer.Flush(); err != nil {
 		return true
 	}
 
-	tlsConn := tls.Server(c.netConn, opts.TLSConfig)
+	tlsConn := tls.Server(plain, opts.TLSConfig)
 
 	// Bound the handshake: a client that sends STARTTLS and then stalls
 	// mid-negotiation must not hold the connection open indefinitely (a
@@ -789,6 +793,9 @@ func (c *Conn) handleStartTLS(ctx context.Context) bool {
 	c.reader = bufio.NewReader(tlsConn)
 	c.writer = c.server.newWriter(tlsConn)
 	c.isTLS = true
+	if opts.OnTLSHandshakeComplete != nil {
+		opts.OnTLSHandshakeComplete(plain, tlsConn)
+	}
 
 	// RFC 5804 §2.2: the server MUST re-issue the capability listing
 	// (followed by an OK) immediately after a successful TLS negotiation.
