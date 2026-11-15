@@ -33,12 +33,35 @@ func parseLine(line string) (command string, args []string, err error) {
 	}
 
 	parts := strings.SplitN(line, " ", 2)
-	command = strings.ToUpper(parts[0])
+	command = toUpperASCII(parts[0])
 	if len(parts) < 2 {
 		return command, nil, nil
 	}
 	args, err = parseTokens(strings.TrimSpace(parts[1]))
 	return command, args, err
+}
+
+// toUpperASCII returns s with its ASCII letters upper-cased and every other
+// byte unchanged. Command names are case-insensitive over US-ASCII only (RFC
+// 5804 section 4 defines them in ABNF, whose "strings are case insensitive
+// and the character set for these strings is US-ASCII", RFC 5234 section
+// 2.3), as are SASL mechanism names (RFC 4422 section 3.1). strings.ToUpper
+// would also map U+0131 (LATIN SMALL LETTER DOTLESS I) to "I" and U+017F
+// (LATIN SMALL LETTER LONG S) to "S", turning a look-alike such as
+// "CAPABıLITY" into a command.
+func toUpperASCII(s string) string {
+	for i := 0; i < len(s); i++ {
+		if 'a' <= s[i] && s[i] <= 'z' {
+			b := []byte(s)
+			for j := i; j < len(b); j++ {
+				if 'a' <= b[j] && b[j] <= 'z' {
+					b[j] -= 'a' - 'A'
+				}
+			}
+			return string(b)
+		}
+	}
+	return s
 }
 
 // parseTokens tokenizes command arguments: space-separated atoms and
