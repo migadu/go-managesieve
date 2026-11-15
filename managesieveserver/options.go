@@ -41,7 +41,7 @@ type Options struct {
 	// NewSession is called for each new connection. The Conn provides access
 	// to the underlying net.Conn (for peer address, TLS state, etc.).
 	// Returning an error rejects the connection immediately: the server sends
-	// "NO <message>" and closes the connection. The message is
+	// "BYE <message>" and closes the connection. The message is
 	// Options.RejectMessage by default, or the wire message of an *Error if
 	// the returned error is (or wraps) one. Return ErrSilentReject to close
 	// without any banner.
@@ -183,7 +183,7 @@ type Options struct {
 	// Default: false.
 	StrictSessionErrors bool
 
-	// RejectMessage is the text sent after "NO " when NewSession returns a
+	// RejectMessage is the text sent after "BYE " when NewSession returns a
 	// plain (non-*Error) error. It is emitted verbatim, so include RFC 5804
 	// quoting yourself. Default: `"Service not available"`.
 	RejectMessage string

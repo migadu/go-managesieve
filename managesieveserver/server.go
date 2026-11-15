@@ -70,7 +70,7 @@ func (s *Server) unregisterConn(c *Conn) {
 // Serve spawns one goroutine per accepted connection and imposes no built-in
 // cap on the number of concurrent connections. To bound concurrency, enforce
 // the limit in Options.NewSession: return a *managesieveserver.Error for a
-// polite "NO" rejection or ErrSilentReject to drop without a banner.
+// polite "BYE" rejection or ErrSilentReject to drop without a banner.
 func (s *Server) Serve(ln net.Listener) error {
 	s.listener = ln
 	s.opts.Logger.Info("ManageSieve: server listening", "addr", ln.Addr())
@@ -250,13 +250,13 @@ func (s *Server) handleConn(netConn net.Conn) {
 		s.opts.Logger.Warn("ManageSieve: session creation failed",
 			"remote", netConn.RemoteAddr(), "error", err)
 		// A limiter can steer the rejection banner by returning an *Error,
-		// e.g. NO (TRYLATER) "Too many connections".
+		// e.g. BYE (TRYLATER) "Too many connections".
 		msg := s.opts.RejectMessage
 		var merr *Error
 		if errors.As(err, &merr) {
 			msg = merr.wireMessage()
 		}
-		c.no(msg)
+		c.bye(msg)
 		c.writer.Flush()
 		netConn.Close()
 		return

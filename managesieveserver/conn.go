@@ -1234,6 +1234,14 @@ func (c *Conn) no(msg string) {
 	}
 }
 
+func (c *Conn) bye(msg string) {
+	if msg == "" {
+		c.writeLine("BYE")
+	} else {
+		c.writeLine("BYE " + stripCRLF(msg))
+	}
+}
+
 // clientError records a client protocol error — bad syntax, an invalid
 // argument, a command sent in the wrong state, or an unknown/unsupported
 // command — then applies the progressive error delay and writes the NO
@@ -1260,8 +1268,8 @@ func (c *Conn) clientError(msg string) {
 	c.no(managesieve.Quote(managesieve.SanitizeText(msg)))
 }
 
-// sessionError maps an error returned by a Session method onto a NO response
-// and records whether the connection should be closed afterwards.
+// sessionError maps an error returned by a Session method onto a NO response,
+// or BYE when the error requests connection closure.
 //
 //   - *Error: its Code/Message are rendered and Close is honoured.
 //   - ErrCloseConnection (bare or wrapped): a generic "internal error" is
@@ -1274,15 +1282,17 @@ func (c *Conn) sessionError(err error) {
 
 	var merr *Error
 	if errors.As(err, &merr) {
-		c.no(merr.wireMessage())
-		if merr.Close {
+		if merr.Close || errors.Is(err, ErrCloseConnection) {
+			c.bye(merr.wireMessage())
 			c.closePending = true
+		} else {
+			c.no(merr.wireMessage())
 		}
 		return
 	}
 
 	if errors.Is(err, ErrCloseConnection) {
-		c.no(`"internal error"`)
+		c.bye(`"internal error"`)
 		c.closePending = true
 		return
 	}

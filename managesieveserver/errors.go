@@ -8,7 +8,7 @@ import (
 )
 
 // ErrCloseConnection may be returned (or wrapped, via fmt.Errorf("%w", ...))
-// by a Session method to instruct the library to send the error's NO response
+// by a Session method to instruct the library to send a BYE response
 // and then close the connection. Use it to implement "respond then drop"
 // behaviour without leaving the session open.
 //
@@ -21,7 +21,7 @@ var ErrCloseConnection = errors.New("managesieveserver: close connection")
 // a connection without writing any response: the connection is closed
 // immediately, before the greeting. Use it for abuse-control rejections
 // (per-IP connection limits, blocklists) where emitting a banner would inform
-// or reward the abuser; return any other error to reject with a NO response.
+// or reward the abuser; return any other error to reject with a BYE response.
 var ErrSilentReject = errors.New("managesieveserver: silently reject connection")
 
 // Error is a Session error whose response is sent to the client and which can
@@ -34,12 +34,12 @@ var ErrSilentReject = errors.New("managesieveserver: silently reject connection"
 //	// wire: NO (NONEXISTENT) "Script does not exist"
 //
 //	return &managesieveserver.Error{Message: "Authentication failed", Close: true}
-//	// wire: NO Authentication failed   (then the connection is closed)
+//	// wire: BYE Authentication failed   (then the connection is closed)
 //
-// Rendering rules:
-//   - Code set: `NO (CODE) "message"` — the message is sanitized and emitted
+// Rendering rules (the response is NO, or BYE when closing):
+//   - Code set: `(CODE) "message"` — the message is sanitized and emitted
 //     as a quoted string, per the RFC 5804 §1.3 response-code form.
-//   - Code empty: `NO message` — the message is emitted verbatim (CR/LF
+//   - Code empty: `message` — the message is emitted verbatim (CR/LF
 //     stripped), so a session that wants RFC framing pre-quotes it with
 //     managesieve.Quote. This lets embedders keep byte-exact response texts.
 type Error struct {
@@ -52,15 +52,15 @@ type Error struct {
 	// is used so nothing sensitive is ever emitted by default.
 	Message string
 
-	// Close, when true, causes the connection to be closed after the
-	// response is flushed.
+	// Close, when true, sends BYE instead of NO and closes the connection
+	// after the response is flushed.
 	Close bool
 }
 
 // Error implements the error interface.
 func (e *Error) Error() string { return e.wireMessage() }
 
-// wireMessage renders the text that follows "NO " on the wire.
+// wireMessage renders the text that follows the response status on the wire.
 func (e *Error) wireMessage() string {
 	msg := e.Message
 	if msg == "" {

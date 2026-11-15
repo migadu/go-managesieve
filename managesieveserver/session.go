@@ -54,8 +54,8 @@ type Session interface {
 	// Return nil on success; the library transitions the connection to the
 	// AUTHENTICATED state and replies "OK Authenticated". Return an error to
 	// reject: a plain error's text is sent verbatim after "NO "; return an
-	// *Error to control the response code/message, with Close to drop the
-	// connection after the response.
+	// *Error to control the response code/message, with Close to send BYE
+	// and drop the connection after the response.
 	//
 	// A proxy implementation may call Conn.Hijack() from within this method
 	// to take over the raw connection instead of entering the AUTHENTICATED
