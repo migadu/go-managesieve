@@ -70,7 +70,7 @@ func (s *Server) unregisterConn(c *Conn) {
 // Serve spawns one goroutine per accepted connection and imposes no built-in
 // cap on the number of concurrent connections. To bound concurrency, enforce
 // the limit in Options.NewSession: return a *managesieveserver.Error for a
-// polite "NO" rejection or ErrSilentReject to drop without a banner.
+// polite "BYE" rejection or ErrSilentReject to drop without a banner.
 func (s *Server) Serve(ln net.Listener) error {
 	s.listener = ln
 	s.opts.Logger.Info("ManageSieve: server listening", "addr", ln.Addr())
