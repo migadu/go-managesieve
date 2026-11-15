@@ -250,13 +250,13 @@ func (s *Server) handleConn(netConn net.Conn) {
 		s.opts.Logger.Warn("ManageSieve: session creation failed",
 			"remote", netConn.RemoteAddr(), "error", err)
 		// A limiter can steer the rejection banner by returning an *Error,
-		// e.g. NO (TRYLATER) "Too many connections".
+		// e.g. BYE (TRYLATER) "Too many connections".
 		msg := s.opts.RejectMessage
 		var merr *Error
 		if errors.As(err, &merr) {
 			msg = merr.wireMessage()
 		}
-		c.no(msg)
+		c.bye(msg)
 		c.writer.Flush()
 		netConn.Close()
 		return

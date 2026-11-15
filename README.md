@@ -74,11 +74,12 @@ return &managesieveserver.Error{Code: "NONEXISTENT", Message: "Script does not e
 // wire: NO (NONEXISTENT) "Script does not exist"
 
 return &managesieveserver.Error{Message: "Authentication failed", Close: true}
-// wire: NO Authentication failed   (then the connection is closed)
+// wire: BYE Authentication failed   (then the connection is closed)
 ```
 
-An uncoded `Error` message is emitted verbatim after `NO `, so an embedder
-that wants RFC quoted-string framing pre-quotes with `managesieve.Quote` —
+An uncoded `Error` message is emitted verbatim after `NO ` (or `BYE ` when
+closing), so an embedder that wants RFC quoted-string framing pre-quotes
+with `managesieve.Quote` —
 this gives hosts byte-exact control over their responses. With
 `Options.StrictSessionErrors` set, plain (non-`*Error`) errors are masked as
 `NO "internal error"` so backend error strings can never leak to clients.
