@@ -100,7 +100,7 @@ func TestPlainRejectMessageQuoted(t *testing.T) {
 	})
 	c := dial(t, addr)
 	resp, _ := c.readResponse()
-	if resp != `NO "Service not available"` {
+	if resp != `BYE "Service not available"` {
 		t.Errorf("plain reject banner = %q", resp)
 	}
 }

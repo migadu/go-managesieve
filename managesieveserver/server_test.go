@@ -864,7 +864,7 @@ func TestNewSessionErrorReject(t *testing.T) {
 	})
 	c := dial(t, addr)
 	resp, _ := c.readResponse()
-	if resp != `NO (TRYLATER) "Too many connections"` {
+	if resp != `BYE (TRYLATER) "Too many connections"` {
 		t.Errorf("reject banner = %q", resp)
 	}
 	if _, err := c.r.ReadString('\n'); err == nil {
