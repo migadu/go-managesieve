@@ -884,3 +884,145 @@ func TestNewSessionSilentReject(t *testing.T) {
 		t.Errorf("expected silent close, got %q", line)
 	}
 }
+
+func TestAuthenticateAbortQuotedAndLiteral(t *testing.T) {
+	addr := startDefaultServer(t, newTestStore())
+	c := dial(t, addr)
+	c.greet()
+
+	// RFC 5804 §2.1: client aborts authentication by responding with "*" as a string
+	// (either quoted "*" or literal {1+}\r\n*\r\n or {1}\r\n*\r\n).
+	for _, abortPayload := range []string{`"*"` + "\r\n", "{1+}\r\n*\r\n", "{1}\r\n*\r\n"} {
+		c.send(`AUTHENTICATE "PLAIN"`)
+		if line := c.readLine(); line != `""` {
+			t.Fatalf("continuation = %q, want %q", line, `""`)
+		}
+		c.sendRaw(abortPayload)
+		resp, _ := c.readResponse()
+		if resp != `NO "Authentication cancelled"` {
+			t.Errorf("abort with %q = %q, want %q", abortPayload, resp, `NO "Authentication cancelled"`)
+		}
+	}
+}
+
+func TestScriptNamesPreserveWhitespaceAndWhitespaceOnlySetActive(t *testing.T) {
+	store := newTestStore()
+	store.AddScript("user@example.com", "main", "keep;", true)
+	addr := startDefaultServer(t, store)
+	c := dial(t, addr)
+	c.authenticate("user@example.com", "secret")
+
+	// SETACTIVE "   " must NOT be trimmed to "" (which would silently deactivate "main");
+	// it must look up the script named "   " and return NO (NONEXISTENT).
+	c.send(`SETACTIVE "   "`)
+	resp, _ := c.readResponse()
+	if !strings.HasPrefix(resp, "NO (NONEXISTENT)") {
+		t.Fatalf("SETACTIVE \"   \" = %q, want NO (NONEXISTENT)", resp)
+	}
+	c.send("LISTSCRIPTS")
+	resp, lines := c.readResponse()
+	if resp != "OK" || len(lines) != 1 || lines[0] != `"main" ACTIVE` {
+		t.Fatalf("after SETACTIVE \"   \", LISTSCRIPTS = %q, %v; want [\"main\" ACTIVE]", resp, lines)
+	}
+
+	// Script names with leading/trailing whitespace must be preserved verbatim across commands.
+	c.sendRaw("PUTSCRIPT \"  spaced  \" {5+}\r\nkeep;\r\n")
+	resp, _ = c.readResponse()
+	if resp != `OK "Script stored"` {
+		t.Fatalf("PUTSCRIPT spaced = %q, want OK \"Script stored\"", resp)
+	}
+
+	c.send(`GETSCRIPT "spaced"`)
+	resp, _ = c.readResponse()
+	if !strings.HasPrefix(resp, "NO (NONEXISTENT)") {
+		t.Errorf("GETSCRIPT trimmed = %q, want NO (NONEXISTENT)", resp)
+	}
+
+	c.send(`GETSCRIPT "  spaced  "`)
+	resp, lines = c.readResponse()
+	if resp != "OK" || len(lines) != 2 || lines[1] != "keep;" {
+		t.Errorf("GETSCRIPT spaced = %q, %v", resp, lines)
+	}
+
+	c.send(`HAVESPACE "  spaced  " 10`)
+	resp, _ = c.readResponse()
+	if resp != "OK" {
+		t.Errorf("HAVESPACE spaced = %q, want OK", resp)
+	}
+
+	c.send(`SETACTIVE "  spaced  "`)
+	resp, _ = c.readResponse()
+	if resp != "OK" {
+		t.Errorf("SETACTIVE spaced = %q, want OK", resp)
+	}
+
+	c.send(`RENAMESCRIPT "  spaced  " "  renamed  "`)
+	resp, _ = c.readResponse()
+	if resp != "OK" {
+		t.Errorf("RENAMESCRIPT spaced = %q, want OK", resp)
+	}
+
+	c.send(`SETACTIVE ""`)
+	resp, _ = c.readResponse()
+	if resp != "OK" {
+		t.Errorf("SETACTIVE empty = %q, want OK", resp)
+	}
+
+	c.send(`DELETESCRIPT "  renamed  "`)
+	resp, _ = c.readResponse()
+	if resp != `OK "Script deleted"` {
+		t.Errorf("DELETESCRIPT renamed = %q, want OK \"Script deleted\"", resp)
+	}
+}
+
+func TestTrailingArgumentsRejected(t *testing.T) {
+	store := newTestStore()
+	store.AddScript("user@example.com", "main", "keep;", false)
+	addr := startServer(t, managesieveserver.Options{
+		NewSession:   store.NewSession,
+		InsecureAuth: true,
+		IdleTimeout:  5 * time.Second,
+		MaxErrors:    -1,
+	})
+
+	// Pre-auth commands with unexpected trailing arguments.
+	c := dial(t, addr)
+	c.greet()
+	for _, cmd := range []string{
+		`CAPABILITY "extra"`,
+		`STARTTLS "extra"`,
+		`NOOP "tag" "extra"`,
+		`AUTHENTICATE "PLAIN" "dGVzdA==" "extra"`,
+		`LOGIN "user@example.com" "secret" "extra"`,
+		`LOGOUT "extra"`,
+	} {
+		c.send(cmd)
+		resp, _ := c.readResponse()
+		if !strings.HasPrefix(resp, "NO ") {
+			t.Errorf("pre-auth %q = %q, want NO ...", cmd, resp)
+		}
+	}
+
+	// Post-auth commands with unexpected trailing arguments.
+	c2 := dial(t, addr)
+	c2.authenticate("user@example.com", "secret")
+	for _, cmd := range []string{
+		`CAPABILITY "extra"`,
+		`NOOP "tag" "extra"`,
+		`LISTSCRIPTS "extra"`,
+		`GETSCRIPT "main" "extra"`,
+		`PUTSCRIPT "main" "keep;" "extra"`,
+		`CHECKSCRIPT "keep;" "extra"`,
+		`HAVESPACE "main" 10 "extra"`,
+		`RENAMESCRIPT "main" "other" "extra"`,
+		`SETACTIVE "main" "extra"`,
+		`DELETESCRIPT "main" "extra"`,
+		`LOGOUT "extra"`,
+	} {
+		c2.send(cmd)
+		resp, _ := c2.readResponse()
+		if !strings.HasPrefix(resp, "NO ") {
+			t.Errorf("post-auth %q = %q, want NO ...", cmd, resp)
+		}
+	}
+}
