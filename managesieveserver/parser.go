@@ -67,7 +67,11 @@ func toUpperASCII(s string) string {
 // parseTokens tokenizes command arguments: space-separated atoms and
 // double-quoted strings with backslash escapes. It is used for the argument
 // part of a command line and for the continuation of a command after a
-// literal argument's body.
+// literal argument's body. A backslash may only escape DQUOTE or another
+// backslash (RFC 5804 section 4: QUOTED-CHAR = SAFE-UTF8-CHAR / "\"
+// QUOTED-SPECIALS, QUOTED-SPECIALS = DQUOTE / "\"); any other escape is a
+// syntax error, so the command never runs on a string with the backslash
+// dropped.
 func parseTokens(rem string) (args []string, err error) {
 	for rem != "" {
 		rem = strings.TrimSpace(rem)
@@ -85,6 +89,9 @@ func parseTokens(rem string) (args []string, err error) {
 			found := false
 			for i < len(rem) {
 				if escaped {
+					if rem[i] != '"' && rem[i] != '\\' {
+						return nil, errors.New("invalid escape in quoted string")
+					}
 					escaped = false
 					i++
 					continue
@@ -125,7 +132,8 @@ func parseTokens(rem string) (args []string, err error) {
 
 // unquoteString removes surrounding double quotes from a string if present
 // and processes backslash escape sequences. Strings without surrounding
-// quotes are returned unchanged.
+// quotes are returned unchanged. A quoted argument comes from parseTokens,
+// which refuses any escape but \" and \\, or from managesieve.Quote.
 func unquoteString(str string) string {
 	if len(str) < 2 || str[0] != '"' || str[len(str)-1] != '"' {
 		return str

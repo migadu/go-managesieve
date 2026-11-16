@@ -246,8 +246,7 @@ func (c *Conn) serve() {
 			args, argsOK = c.resolveLiteralArgs(cmd, args)
 		}
 		if parseErr != nil {
-			c.lastErr = parseErr
-			c.clientError(fmt.Sprintf("Invalid command syntax: %v", parseErr))
+			c.syntaxError(line, parseErr)
 		} else if cmd == "" {
 			continue
 		} else if !argsOK {
@@ -1158,10 +1157,10 @@ func (c *Conn) resolveLiteralArgs(cmd string, args []string) ([]string, bool) {
 		args[idx] = managesieve.Quote(string(body))
 		c.line = strings.TrimSuffix(rest, "\r\n")
 
-		more, perr := parseTokens(strings.TrimSpace(rest))
+		rest = strings.TrimSpace(rest)
+		more, perr := parseTokens(rest)
 		if perr != nil {
-			c.lastErr = perr
-			c.clientError(fmt.Sprintf("Invalid command syntax: %v", perr))
+			c.syntaxError(rest, perr)
 			return nil, false
 		}
 		args = append(args, more...)
@@ -1311,6 +1310,21 @@ func (c *Conn) clientError(msg string) {
 	}
 	c.applyErrorDelay()
 	c.no(managesieve.Quote(managesieve.SanitizeText(msg)))
+}
+
+// syntaxError answers a command line, or the rest of one after a literal
+// argument, that the parser refused. If the line ends with a literal marker,
+// the literal's body may already be on its way: a non-synchronizing {N+}
+// literal commits it, as do bytes pipelined after a synchronizing {N} one.
+// That body cannot be told from the next command, so the connection is
+// closed after the NO, as for a literal refused for its size.
+func (c *Conn) syntaxError(line string, err error) {
+	c.lastErr = err
+	c.clientError(fmt.Sprintf("Invalid command syntax: %v", err))
+	last := line[strings.LastIndexAny(line, " \t")+1:]
+	if _, nonSync, isLit, _ := literalLength(last); isLit && (nonSync || c.reader.Buffered() > 0) {
+		c.closePending = true
+	}
 }
 
 // sessionError maps an error returned by a Session method onto a NO response,
