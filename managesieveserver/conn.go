@@ -246,7 +246,7 @@ func (c *Conn) serve() {
 			args, argsOK = c.resolveLiteralArgs(cmd, args)
 		}
 		if parseErr != nil {
-			c.syntaxError(line, parseErr)
+			c.syntaxError(cmd, line, parseErr)
 		} else if cmd == "" {
 			continue
 		} else if !argsOK {
@@ -1160,7 +1160,7 @@ func (c *Conn) resolveLiteralArgs(cmd string, args []string) ([]string, bool) {
 		rest = strings.TrimSpace(rest)
 		more, perr := parseTokens(rest)
 		if perr != nil {
-			c.syntaxError(rest, perr)
+			c.syntaxError(cmd, rest, perr)
 			return nil, false
 		}
 		args = append(args, more...)
@@ -1316,15 +1316,17 @@ func (c *Conn) clientError(msg string) {
 // argument, that the parser refused. If the line ends with a literal marker,
 // the literal's body may already be on its way: a non-synchronizing {N+}
 // literal commits it, as do bytes pipelined after a synchronizing {N} one.
+// AUTHENTICATE response literals never use a continuation, so both forms
+// commit their body even when no bytes are buffered yet.
 // That body cannot be told from the next command, so the connection is
 // closed after the NO, as for a literal refused for its size. The marker is
 // looked for from the line's last "{", not its last space: the parser reads
 // a marker right after a closing quote ("ab"{5+}) as a literal too.
-func (c *Conn) syntaxError(line string, err error) {
+func (c *Conn) syntaxError(cmd, line string, err error) {
 	c.lastErr = err
 	c.clientError(fmt.Sprintf("Invalid command syntax: %v", err))
 	if i := strings.LastIndexByte(line, '{'); i >= 0 {
-		if _, nonSync, isLit, _ := literalLength(line[i:]); isLit && (nonSync || c.reader.Buffered() > 0) {
+		if _, nonSync, isLit, _ := literalLength(line[i:]); isLit && (cmd == "AUTHENTICATE" || nonSync || c.reader.Buffered() > 0) {
 			c.closePending = true
 		}
 	}
