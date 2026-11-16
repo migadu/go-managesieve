@@ -45,10 +45,11 @@ func TestAuthenticateRefusesNonBase64Characters(t *testing.T) {
 		{"initial atom, CR before the CRLF", true, plainUserSecret + "\r", true},
 		{"initial atom, trailing space", true, plainUserSecret + " ", true},
 		{"initial atom, trailing tab", true, plainUserSecret + "\t", true},
-		// A backslash is outside the base64 alphabet, and "\" before a
-		// base64 character is no QUOTED-CHAR either (RFC 5804 section 4:
-		// QUOTED-CHAR = SAFE-UTF8-CHAR / "\" QUOTED-SPECIALS).
-		{"initial quoted, backslash inside", true, `"` + backslashInside + `"`, true},
+		// A quoted initial response is a command argument, refused by the
+		// command parser when it holds an invalid escape such as "\" before a
+		// base64 character (TestInvalidQuotedEscapeRefused). An escaped
+		// backslash is a valid QUOTED-CHAR, but outside the base64 alphabet.
+		{"initial quoted, escaped backslash inside", true, `"` + plainUserSecret[:4] + `\\` + plainUserSecret[4:] + `"`, true},
 
 		{"continuation bare", false, plainUserSecret, false},
 		{"continuation bare, CR inside", false, crInside, true},
@@ -58,6 +59,9 @@ func TestAuthenticateRefusesNonBase64Characters(t *testing.T) {
 		{"continuation quoted", false, `"` + plainUserSecret + `"`, false},
 		{"continuation quoted, CR inside", false, `"` + crInside + `"`, true},
 		{"continuation quoted, leading space", false, ` "` + plainUserSecret + `"`, true},
+		// A backslash is outside the base64 alphabet, and "\" before a
+		// base64 character is no QUOTED-CHAR either (RFC 5804 section 4:
+		// QUOTED-CHAR = SAFE-UTF8-CHAR / "\" QUOTED-SPECIALS).
 		{"continuation quoted, backslash inside", false, `"` + backslashInside + `"`, true},
 		{"continuation literal", false, literal(plainUserSecret), false},
 		{"continuation literal, CRLF inside", false, literal(crlfInside), true},
