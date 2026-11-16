@@ -1317,13 +1317,16 @@ func (c *Conn) clientError(msg string) {
 // the literal's body may already be on its way: a non-synchronizing {N+}
 // literal commits it, as do bytes pipelined after a synchronizing {N} one.
 // That body cannot be told from the next command, so the connection is
-// closed after the NO, as for a literal refused for its size.
+// closed after the NO, as for a literal refused for its size. The marker is
+// looked for from the line's last "{", not its last space: the parser reads
+// a marker right after a closing quote ("ab"{5+}) as a literal too.
 func (c *Conn) syntaxError(line string, err error) {
 	c.lastErr = err
 	c.clientError(fmt.Sprintf("Invalid command syntax: %v", err))
-	last := line[strings.LastIndexAny(line, " \t")+1:]
-	if _, nonSync, isLit, _ := literalLength(last); isLit && (nonSync || c.reader.Buffered() > 0) {
-		c.closePending = true
+	if i := strings.LastIndexByte(line, '{'); i >= 0 {
+		if _, nonSync, isLit, _ := literalLength(line[i:]); isLit && (nonSync || c.reader.Buffered() > 0) {
+			c.closePending = true
+		}
 	}
 }
 
