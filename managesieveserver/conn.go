@@ -558,7 +558,7 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 		return
 	}
 
-	mechanism := strings.ToUpper(unquoteString(args[0]))
+	mechanism := toUpperASCII(unquoteString(args[0]))
 	if mechanism != "PLAIN" {
 		c.clientError("Unsupported authentication mechanism")
 		return
