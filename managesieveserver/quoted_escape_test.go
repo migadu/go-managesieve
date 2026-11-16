@@ -2,10 +2,35 @@ package managesieveserver_test
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
+	"time"
 )
+
+// AUTHENTICATE does not send a continuation for either literal form. A
+// refusal must close even when the committed response has not arrived yet.
+func TestInvalidQuotedMechanismWithLiteralResponseCloses(t *testing.T) {
+	for _, marker := range []string{"{4}", "{4+}"} {
+		t.Run(marker, func(t *testing.T) {
+			addr := startDefaultServer(t, newTestStore())
+			c := dial(t, addr)
+			c.greet()
+			c.send(`AUTHENTICATE "PL\AIN" ` + marker)
+			if resp, _ := c.readResponse(); !strings.HasPrefix(resp, `NO "Invalid command syntax:`) {
+				t.Fatalf("refusal = %q, want syntax error", resp)
+			}
+			if err := c.conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			if line, err := c.r.ReadString('\n'); line != "" || !errors.Is(err, io.EOF) {
+				t.Fatalf("after refusal = %q, %v; want EOF", line, err)
+			}
+		})
+	}
+}
 
 // In a quoted string a backslash may only escape DQUOTE or another
 // backslash. RFC 5804 section 4:
