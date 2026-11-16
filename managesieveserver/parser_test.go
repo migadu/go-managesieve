@@ -19,9 +19,18 @@ func TestParseLine(t *testing.T) {
 		{`noop`, `NOOP`, nil, false},
 		{`GETSCRIPT "my script"`, `GETSCRIPT`, []string{`"my script"`}, false},
 		{`PUTSCRIPT "name" {123+}`, `PUTSCRIPT`, []string{`"name"`, `{123+}`}, false},
+		{`PUTSCRIPT "name"{123+}`, `PUTSCRIPT`, []string{`"name"`, `{123+}`}, false},
 		{`AUTHENTICATE "PLAIN" "dGVzdA=="`, `AUTHENTICATE`, []string{`"PLAIN"`, `"dGVzdA=="`}, false},
 		{`RENAMESCRIPT "a \"quoted\" name" "plain"`, `RENAMESCRIPT`, []string{`"a \"quoted\" name"`, `"plain"`}, false},
 		{`GETSCRIPT "unclosed`, `GETSCRIPT`, nil, true},
+		{`GETSCRIPT "back\\slash"`, `GETSCRIPT`, []string{`"back\\slash"`}, false},
+		// RFC 5804 section 4: QUOTED-CHAR = SAFE-UTF8-CHAR / "\" QUOTED-SPECIALS,
+		// QUOTED-SPECIALS = DQUOTE / "\". Any other escape is a syntax error.
+		{`GETSCRIPT "a\b"`, `GETSCRIPT`, nil, true},
+		{`GETSCRIPT "a\ b"`, `GETSCRIPT`, nil, true},
+		{`GETSCRIPT "a\éb"`, `GETSCRIPT`, nil, true},
+		{`RENAMESCRIPT "a" "b\c"`, `RENAMESCRIPT`, nil, true},
+		{`GETSCRIPT "a\"`, `GETSCRIPT`, nil, true}, // the closing quote is escaped
 	}
 	for _, tt := range tests {
 		cmd, args, err := parseLine(tt.in)
