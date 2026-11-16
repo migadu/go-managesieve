@@ -55,6 +55,10 @@ func TestInvalidQuotedEscapeRefused(t *testing.T) {
 		{"PUTSCRIPT name, sync literal content", true, fmt.Sprintf("PUTSCRIPT \"a\\b\" {%d}\r\n", len(smuggled)), false},
 		{"AUTHENTICATE mechanism, literal response", false, fmt.Sprintf("AUTHENTICATE \"PL\\AIN\" {%d+}\r\n%s\r\n", len(plain), plain), true},
 		{"after a literal argument, non-sync literal", true, fmt.Sprintf("RENAMESCRIPT {2+}\r\nab \"ne\\w\" {%d+}\r\n%s\r\n", len(smuggled), smuggled), true},
+		// The marker needs no space before it: the parser reads "ab"{5+}
+		// as a name and a literal, like "ab" {5+}.
+		{"PUTSCRIPT name, non-sync literal right after the quote", true, fmt.Sprintf("PUTSCRIPT \"a\\b\"{%d+}\r\n%s\r\n", len(smuggled), smuggled), true},
+		{"after a literal argument, non-sync literal right after the quote", true, fmt.Sprintf("RENAMESCRIPT {2+}\r\nab \"ne\\w\"{%d+}\r\n%s\r\n", len(smuggled), smuggled), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

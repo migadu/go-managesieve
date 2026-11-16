@@ -19,6 +19,7 @@ func TestParseLine(t *testing.T) {
 		{`noop`, `NOOP`, nil, false},
 		{`GETSCRIPT "my script"`, `GETSCRIPT`, []string{`"my script"`}, false},
 		{`PUTSCRIPT "name" {123+}`, `PUTSCRIPT`, []string{`"name"`, `{123+}`}, false},
+		{`PUTSCRIPT "name"{123+}`, `PUTSCRIPT`, []string{`"name"`, `{123+}`}, false},
 		{`AUTHENTICATE "PLAIN" "dGVzdA=="`, `AUTHENTICATE`, []string{`"PLAIN"`, `"dGVzdA=="`}, false},
 		{`RENAMESCRIPT "a \"quoted\" name" "plain"`, `RENAMESCRIPT`, []string{`"a \"quoted\" name"`, `"plain"`}, false},
 		{`GETSCRIPT "unclosed`, `GETSCRIPT`, nil, true},
