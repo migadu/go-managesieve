@@ -70,6 +70,12 @@ type Conn struct {
 	// no longer safe to resume (e.g. a failed literal read).
 	closePending bool
 
+	// line is the physical line that holds the current command's last
+	// argument, its CRLF removed and nothing trimmed. handleAuthenticate
+	// checks an unquoted initial response against it, so that whitespace or
+	// a CR after the response is refused rather than trimmed away.
+	line string
+
 	// lastErr holds the error produced by the current command, for the
 	// OnCommand observability hook.
 	lastErr error
@@ -223,6 +229,7 @@ func (c *Conn) serve() {
 			return
 		}
 
+		c.line = strings.TrimSuffix(line, "\r\n")
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -585,8 +592,16 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 			if authData, ok = c.readAuthLiteral(length); !ok {
 				return
 			}
+		} else if !strings.HasPrefix(arg, `"`) && !strings.HasSuffix(c.line, arg) {
+			// An unquoted response is not a string, but it is accepted like a
+			// bare continuation line, and like one it runs to the CRLF: the
+			// whitespace or CR that the command parser trimmed after it is
+			// part of it, and is refused with it.
+			c.lastErr = errors.New("characters after the SASL response")
+			c.clientError("Invalid authentication data")
+			return
 		} else {
-			authData = unquoteString(arg)
+			authData = saslString(arg)
 		}
 	} else {
 		// No initial response: send the empty-string continuation (RFC 5804
@@ -611,7 +626,10 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 			c.closePending = true
 			return
 		}
-		authData = strings.TrimSpace(authLine)
+		// Only the CRLF is framing (readLine refuses a line without one):
+		// whitespace around the response is part of it and is refused with
+		// it.
+		authData = strings.TrimSuffix(authLine, "\r\n")
 
 		// RFC 5804 §2.1: the continuation response is a string, so it may
 		// arrive literal-framed or quoted (including the "*" abort token)
@@ -629,7 +647,7 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 				return
 			}
 		} else {
-			authData = unquoteString(authData)
+			authData = saslString(authData)
 		}
 
 		// Client abort (RFC 5804 §2.1).
@@ -640,7 +658,7 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 		}
 	}
 
-	decoded, err := base64.StdEncoding.DecodeString(authData)
+	decoded, err := decodeSASLResponse(authData)
 	if err != nil {
 		c.lastErr = err
 		c.clientError("Invalid authentication data")
@@ -675,6 +693,32 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 
 	c.authenticated = true
 	c.writeLine(`OK "Authenticated"`)
+}
+
+// decodeSASLResponse decodes a client's SASL response, which RFC 5804 section
+// 2.1 frames as a string "with the base-64 encoding of the SASL data".
+// base64.StdEncoding refuses every character outside the base64 alphabet
+// except CR and LF, which it skips wherever they occur; RFC 4648 section 3.3:
+// "Implementations MUST reject the encoded data if it contains characters
+// outside the base alphabet when interpreting base-encoded data".
+func decodeSASLResponse(response string) ([]byte, error) {
+	if strings.ContainsAny(response, "\r\n") {
+		return nil, errors.New("CR or LF in SASL response")
+	}
+	return base64.StdEncoding.DecodeString(response)
+}
+
+// saslString returns the content of a quoted SASL response with its escapes
+// left in place, and any other response unchanged. No base64 character needs
+// escaping, so a backslash belongs to no valid response: kept, it is refused
+// by decodeSASLResponse, where unquoteString would drop it before an invalid
+// escape (RFC 5804 section 4: QUOTED-CHAR = SAFE-UTF8-CHAR / "\"
+// QUOTED-SPECIALS) and let the rest decode.
+func saslString(s string) string {
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
 
 // readAuthLiteral consumes an AUTHENTICATE literal body (initial response or
@@ -1112,6 +1156,7 @@ func (c *Conn) resolveLiteralArgs(cmd string, args []string) ([]string, bool) {
 		// Re-quote the body so the handlers' per-argument unquoteString
 		// round-trips values containing quote characters.
 		args[idx] = managesieve.Quote(string(body))
+		c.line = strings.TrimSuffix(rest, "\r\n")
 
 		more, perr := parseTokens(strings.TrimSpace(rest))
 		if perr != nil {
