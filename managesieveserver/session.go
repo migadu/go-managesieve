@@ -49,7 +49,8 @@ type Session interface {
 	// owns the wire exchange (quoted-string or literal initial response, the
 	// `""` continuation, `*` abort, base64 decoding, and NUL splitting); the
 	// session receives the decoded authorization identity, authentication
-	// identity, and password.
+	// identity, and password, unchanged: an empty password is passed on too,
+	// for the session to refuse.
 	//
 	// Return nil on success; the library transitions the connection to the
 	// AUTHENTICATED state and replies "OK Authenticated". Return an error to

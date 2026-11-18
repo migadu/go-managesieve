@@ -670,14 +670,11 @@ func (c *Conn) handleAuthenticate(ctx context.Context, args []string) {
 		c.clientError("Invalid authentication format")
 		return
 	}
+	// The fields go to the session unchanged, an empty password included: the
+	// session decides about every credential, so it can rate-limit and count an
+	// empty one like any other failed login. A refusal costs the same MaxErrors
+	// error either way (authFailure).
 	authzID, authnID, password := parts[0], parts[1], parts[2]
-
-	// Reject empty passwords immediately without invoking the session:
-	// they are never valid under any condition.
-	if password == "" {
-		c.authFailure(&Error{Message: `"Authentication failed"`})
-		return
-	}
 
 	if err := c.session.AuthenticatePlain(ctx, authzID, authnID, password); err != nil {
 		c.authFailure(err)
